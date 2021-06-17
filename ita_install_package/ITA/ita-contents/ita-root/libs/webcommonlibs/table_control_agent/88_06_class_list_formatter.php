@@ -1362,6 +1362,25 @@ class ExcelFormatter extends ListFormatter {
         $this->makeFilterSheet($X);
     }
 
+    function editHelpWorkSheetAddHistory(){
+        global $g;
+        $X = $this->objFocusWB;
+
+        $strTextExplain01 = $g['objMTS']->getSomeMessage("ITAWDCH-STD-16201");
+
+        $varMinorPrintTypeMode = $this->getGeneValue("minorPrintTypeMode");
+
+        //----マスタ用シートの作成
+        $this->makeMasterSheet($X,"",0);
+
+        if( $varMinorPrintTypeMode == "forDeveloper" ){
+            //----マスターの鍵値が付加されたシートを追加する
+            $this->makeMasterSheet($X,"",1,$strTextExplain01);
+            //マスターの鍵値が付加されたシートを追加する----
+        }
+        //マスタ用シートの作成----
+    }
+
     function editWorkSheetHeaderCreate(){
         global $g;
         $strTextExplain03 = $g['objMTS']->getSomeMessage("ITAWDCH-STD-16203");
@@ -1968,6 +1987,139 @@ class ExcelFormatter extends ListFormatter {
         }
     }
 
+    function editWorkSheetTailerFixHistory(){
+        global $g;
+        $strFontNameOnExcel = $g['objMTS']->getSomeMessage("ITAWDCH-STD-16209");//"メイリオ";
+
+        $this->objFocusWB->setActiveSheetIndex(0);
+        $sheet = $this->objFocusWB->getActiveSheet();
+
+        $aryObjColumn = $this->objTable->getColumns();
+        foreach($aryObjColumn as $objColumn){
+            $objColumn->setFormatterRef($this);
+        }
+        $varMinorPrintTypeMode = $this->getGeneValue("minorPrintTypeMode");
+
+        $lcRequiredNoteColId = $this->objTable->getRequiredNoteColumnID();  //"NOTE"
+        $lcRequiredUpdateDate4UColumnId = $this->objTable->getRequiredUpdateDate4UColumnID(); //"UPD_UPDATE_TIMESTAMP"
+        $lcRequiredRowEditByFileColumnId = $this->objTable->getRequiredRowEditByFileColumnID();
+
+        $colREBFName = $aryObjColumn[$lcRequiredRowEditByFileColumnId]->getColLabel();
+
+        $strRRBBGGLastContentRow = "FF".$this->getRGBOfLastContentRow();
+
+        $intThisStartRow = $this->bodyTopRow + $this->intEditSheetRecord;
+
+        $strFormula1FilterID = "";             // マスターテーブルのID用変数 setFormula1用の結合文字列に利用
+        $aryValidationCellPropaties = array();
+
+        // ---- RBAC対応
+        $RoleList = array();
+        $obj = new RoleBasedAccessControl($g['objDBCA']);
+        // デフォルトアクセス権のあるロール名リストを取得
+        $DefaultAccessRoleString = $obj->getDefaultAccessRoleString($g['login_id'],'NAME',true);  // 廃止を含む
+        unset($obj);
+        if($DefaultAccessRoleString === false) {
+            $message = sprintf("[%s:%s]Failed get Role information.",basename(__FILE__),__LINE__);
+            web_log($message);
+            throw new Exception($message);
+        }
+        // RBAC対応 ----
+
+        $i_col = 0;
+        $AccessAuthColumn_idx = -1;
+        foreach($aryObjColumn as $objColumn){
+            if( $objColumn->getID() == $lcRequiredRowEditByFileColumnId ){
+                continue;
+            // Excel出力の対象カラムか判定
+            }else if( $objColumn->getOutputType($this->strPrintTargetListFormatterId)->isVisible() === false ){
+                if( $varMinorPrintTypeMode!="forDeveloper"){
+                    continue;
+                }
+            }
+            // ---- RBAC対応 
+            // アクセス権カラムの判定
+            if($this->objTable->getAccessAuth() === true) {
+                if($objColumn->getID() == $this->objTable->getAccessAuthColumnName()) {
+                    // アクセス権カラムの位置を退避
+                    $AccessAuthColumn_idx = $i_col;
+                }
+            }
+            // RBAC対応 ----
+            if( is_a($objColumn, "IDColumn") === true ){
+                //----IDColumnは文字をマスタテーブルのIDに置き換える。
+                if($varMinorPrintTypeMode == ""){
+                    $strFormula1FilterID = $objColumn->getID();
+                    $arraykey = self::DATA_START_COL+$i_col;               // Cell column number
+                    $aryValidationCellPropaties[0] = $intThisStartRow;     // Cell Start row number
+                    $aryValidationCellPropaties[1] = $strFormula1FilterID; // Cell Formula1 Filter ColumnID
+                    // ヴァリデーション対象カラムのアドレス情報とフィルターカラムを配列化
+                    $this->aryValidationTail += array( $arraykey => $aryValidationCellPropaties );
+                }
+            }   //IDColumnは文字をマスタテーブルのIDに置き換える。----
+
+            //----ボディのスタイル(データ1行目のスタイルをコピー)
+            $sheet->duplicateStyle($sheet->getStyleByColumnAndRow(self::DATA_START_COL+$i_col, $this->bodyTopRow), 
+                    self::cr2s(self::DATA_START_COL+$i_col, $intThisStartRow).":".self::cr2s(self::DATA_START_COL+$i_col, $intThisStartRow+self::WHITE_ROWS));
+            //ボディのスタイル(データ1行目のスタイルをコピー)----
+
+            $i_col++;
+        }
+
+        //処理種別の書式設定
+        //ボディのスタイル(データ1行目のスタイルをコピー)
+        $sheet->duplicateStyle($sheet->getStyleByColumnAndRow(self::DATA_START_COL-1, $this->bodyTopRow),
+                               self::cr2s(self::DATA_START_COL-1, $intThisStartRow).":".self::cr2s(self::DATA_START_COL-1, $intThisStartRow+self::WHITE_ROWS));
+
+        //----処理種別カラムの設定
+
+        $sheet->setCellValue(self::cr2s(self::DATA_START_COL-1,1),$colREBFName);
+        $sheet->setCellValue(self::cr2s(self::DATA_START_COL-1,$this->bodyTopRow-1),$colREBFName);
+
+        $dataValidation = $sheet->getDataValidation(self::cr2s(self::DATA_START_COL-1, $this->bodyTopRow));
+        if($varMinorPrintTypeMode == ""){
+            for($i = $intThisStartRow; $i <= $intThisStartRow+self::WHITE_ROWS; ++$i){
+                $sheet->setCellValue(self::cr2s(self::DATA_START_COL-1,$i),"-");
+            }
+            $this->aryValidationTailHeader[0] = $intThisStartRow;                  // Column Top
+            $this->aryValidationTailHeader[1] = $dataValidation;                   // ValidationObject
+        }
+        //処理種別カラムの設定----
+
+        $maxCol = $this->intEditSheetMaxCol;
+
+        //----最終白行の次の行に、注意書きの行を追加する
+        $lastRowNumber = $intThisStartRow + self::WHITE_ROWS;
+        $lastColNumber = self::DATA_START_COL + $maxCol - 1;
+        
+        //幅指定とウィンドウ枠の固定とオートフィルタ
+        //オートに設定後、幅を計算、オート設定を戻す
+        for($i_col = self::DATA_START_COL-1; $i_col <= $maxCol; ++$i_col){
+            $sheet->getColumnDimension(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i_col))->setAutoSize(true);
+        }
+        $sheet->calculateColumnWidths();
+        for($i_col = self::DATA_START_COL-1; $i_col <= $maxCol; ++$i_col){
+            $sheet->getColumnDimension(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i_col))->setAutoSize(false);
+        }
+
+        $description_array = $this->aryEditSheetDescription;
+
+        // RBAC対応 ----
+        $AccessAuthColumn_idx += self::DATA_START_COL;
+        for($i_row = $intThisStartRow; $i_row <= $intThisStartRow+self::WHITE_ROWS; ++$i_row){
+            $sheet->setCellValueExplicitByColumnAndRow($AccessAuthColumn_idx, $i_row ,$DefaultAccessRoleString, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        }
+        // ---- RBAC対応
+
+        $sheet->fromArray($description_array, "null", self::cr2s(self::DATA_START_COL, $this->bodyTopRow-2));
+        $sheet->freezePane(self::cr2s(self::DATA_START_COL, $this->bodyTopRow));
+        $sheet->setAutoFilter(self::cr2s(self::DATA_START_COL-1, $this->bodyTopRow-1).":".self::cr2s(self::DATA_START_COL-1+$maxCol,$intThisStartRow+self::WHITE_ROWS));
+
+        foreach($aryObjColumn as $objColumn){
+            $objColumn->setFormatterRef(null);
+        }
+    }
+
     /*
         Validationルール適用処理関数 Tail部(白行)のみ適用タイプ 新規登録用やテーブルレコードなしで”ColumnID"をもつEXCELファイルへバリデーションルールを適用する
     */
@@ -2187,6 +2339,17 @@ class ExcelFormatter extends ListFormatter {
         $retArray = array($intRowLength,$intErrorType,$aryErrMsgBody,$strErrMsg);
         dev_log($g['objMTS']->getSomeMessage("ITAWDCH-STD-4",array(__FILE__,$strFxName)),$intControlDebugLevel01);
         return $retArray;
+    }
+
+    function editWorkSheetHistoryNonusedData() {
+        $this->objFocusWB->setActiveSheetIndex(0);
+        $sheet = $this->objFocusWB->getActiveSheet();
+        for($r = 1; $r <= 8; ++$r){
+            $sheet->getRowDimension($r)->setVisible(false);
+        }
+        $sheet->getColumnDimension('A')->setVisible(false);
+        $sheet->getColumnDimension('B')->setVisible(false);
+        $sheet->getColumnDimension('C')->setVisible(false);
     }
 }
 
@@ -2440,7 +2603,6 @@ class SingleRowTableFormatter extends TableFormatter {
             }
             // RBAC対応 ----
             $objColumnId = $objColumn->getID();
-            
             if( get_class($this) == "RegisterTableFormatter" && get_class($objColumn) == "FileUploadColumn" ) {
 
                 if( $objColumn->getFileEncryptFunctionName() == false ) {
