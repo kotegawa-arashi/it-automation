@@ -558,7 +558,8 @@ EOD;
         $retArray = array();
         $dlcHtmlBody = "";
 
-        $strLimitRowWarningMsgBody="";
+        $strLimitRowWarningMsgBodyLatest="";
+        $strLimitRowWarningMsgBodyHistory="";
 
         try{
             $retArray = checkCommonSettingVariants($strFxName, $objTable, $aryVariant, $arySetting, "QMFileSendAreaFormatter", $strFormatterId);
@@ -662,25 +663,28 @@ EOD;
                     if ($intXlsLimit < $latestRowLength) {
                         // 全件ダウンロード
                         $btnLatestXlsDlFlag = "disabled=true ";
-                        if( $flag_CSVShow!==false ){
+                        if( $flag_LatestCSVShow!==false ){
                             //----無条件でCSVを隠す、という設定ではない
                             $flag_CSVShow = true;
                             $flag_LatestCSVShow = true;
                             //無条件でCSVを隠す、という設定ではない----
                         }
+                        if( 0 < $intXlsLimit ){
+                            $strLimitRowWarningMsgBodyLatest = $g['objMTS']->getSomeMessage("ITAWDCH-STD-321",array($latestRowLength, $intXlsLimit));
+                        }
                     }
                     if ( $intXlsLimit < $historyRowLength ) {
                         // 変更履歴全件ダウンロード
                         $btnHistoryXlsDlFlag = "disabled=true ";
-                        if( $flag_CSVShow!==false ){
+                        if( $flag_HistoryCSVShow!==false ){
                             //----無条件でCSVを隠す、という設定ではない
                             $flag_CSVShow = true;
                             $flag_HistoryCSVShow = true;
                             //無条件でCSVを隠す、という設定ではない----
                         }
-                    }
-                    if( 0 < $intXlsLimit ){
-                        $strLimitRowWarningMsgBody = $g['objMTS']->getSomeMessage("ITAWDCH-STD-321",array($latestRowLength, $historyRowLength, $intXlsLimit));
+                        if( 0 < $intXlsLimit ){
+                            $strLimitRowWarningMsgBodyHistory = $g['objMTS']->getSomeMessage("ITAWDCH-STD-321",array($historyRowLength, $intXlsLimit));
+                        }
                     }
                     //エクセル出力の最大行を超えていた場合----
                 }
@@ -702,22 +706,15 @@ EOD;
                 <input type="hidden" name="datatype" value="latest">
                 {$htmlFirstBake_AddArea_reqExcelDL}
             </form>
-            <form style="display:inline" name="reqHistoryExcelDL_print_table" action="{$g['scheme_n_authority']}/default/menu/04_all_dump_excel.php?no={$g['page_dir']}" method="POST" >
-                <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-322")}" {$btnHistoryXlsDlFlag}>
-                <input type="hidden" name="filteroutputfiletype" value="excel">
-                <input type="hidden" name="FORMATTER_ID" value="{$strLinkExcelFormatterId}">
-                <input type="hidden" name="datatype" value="history">
-                {$htmlFirstBake_AddArea_reqExcelDL}
-            </form>
             <br>
-            {$strLimitRowWarningMsgBody}
+            {$strLimitRowWarningMsgBodyLatest}
             <br>
 EOD;
                 //無条件で隠す、という設定ではない----
                 }
             }
 
-            if( $flag_CSVShow===true ){
+            if( $flag_LatestCSVShow===true ){
                 //----CSV系の常時ダウンロードを無条件で隠すという設定ではない場合、または、エクセルダウンロード上限数以上の場合
 
                 if( $strLinkCSVFormatterId === null){
@@ -744,21 +741,10 @@ EOD;
                 <input type="hidden" name="datatype" value="latest">
                 {$htmlFirstBake_AddArea_reqCsvDL}
             </form>
-EOD;
-                    }
-                    if ( $flag_HistoryCSVShow ) {
-                    $dlcHtmlBody .=
-<<<EOD
-            <form style="display:inline" name="reqHistoryCsvDL" action="{$g['scheme_n_authority']}/default/menu/04_all_dump_excel.php?no={$g['page_dir']}" method="POST" >
-                <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-325")}({$fileTypeNameBody})" >
-                <input type="hidden" name="filteroutputfiletype" value="csv">
-                <input type="hidden" name="FORMATTER_ID" value="{$strLinkCSVFormatterId}">
-                <input type="hidden" name="datatype" value="history">
-                {$htmlFirstBake_AddArea_reqCsvDL}
-            </form>
             <br>
 EOD;
                     }
+
                     $strOutputFileType = $objTable->getFormatter($strLinkCSVFormatterId)->getGeneValue("outputFileType");
                     if($strOutputFileType == "SafeCSV"){
                         $dlcHtmlBody .= 
@@ -774,17 +760,11 @@ EOD;
                 <input type="hidden" name="requestuserclass" value="visitor">
                 <input type="hidden" name="datatype" value="latest">
             </form>
-            <form style="display:inline" name="reqExcelDL" action="{$g['scheme_n_authority']}/default/menu/04_all_dump_excel.php?no={$g['page_dir']}" method="POST" >
-                <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-327")}" >
-                <input type="hidden" name="filteroutputfiletype" value="excel">
-                <input type="hidden" name="FORMATTER_ID" value="{$strLinkCSVFormatterId}">
-                <input type="hidden" name="requestuserclass" value="visitor">
-                <input type="hidden" name="datatype" value="history">
-            </form>
             <br>
             <br>
             <br>
 EOD;
+
                     }
                 }
                 //CSV系の常時ダウンロードを無条件で隠すという設定ではない場合、または、エクセルダウンロード上限数以上の場合----
@@ -869,6 +849,69 @@ EOD;
 
                 //メンテナンス権限があった場合----
             }
+            if($flag_ExcelHidden !== true){
+                if( $strLinkExcelFormatterId === null){
+                    //----エクセル用のフォーマットIDがnullだった
+                    //エクセル用のフォーマットIDがnullだった----
+                }else{
+                    $dlcHtmlBody .=
+<<<EOD
+        <br>
+        <br>
+        <br>
+        <form style="display:inline" name="reqHistoryExcelDL_print_table" action="{$g['scheme_n_authority']}/default/menu/04_all_dump_excel.php?no={$g['page_dir']}" method="POST" >
+            <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-322")}" {$btnHistoryXlsDlFlag}>
+            <input type="hidden" name="filteroutputfiletype" value="excel">
+            <input type="hidden" name="FORMATTER_ID" value="{$strLinkExcelFormatterId}">
+            <input type="hidden" name="datatype" value="history">
+            {$htmlFirstBake_AddArea_reqExcelDL}
+        </form>
+        <br>
+        {$strLimitRowWarningMsgBodyHistory}
+        <br>
+EOD;
+                }
+            }
+            if( $flag_HistoryCSVShow===true ){
+                //----CSV系の常時ダウンロードを無条件で隠すという設定ではない場合、または、エクセルダウンロード上限数以上の場合
+                if( $strLinkCSVFormatterId === null){
+                    //----CSV用のフォーマットIDがnullだった
+                    //CSV用のフォーマットIDがnullだった----
+                }else{$strOutputFileType = $objTable->getFormatter($strLinkCSVFormatterId)->getGeneValue("outputFileType");
+                    if($strOutputFileType=="SafeCSV"){
+                        $fileTypeNameBody = $g['objMTS']->getSomeMessage("ITAWDCH-STD-323");
+                    }else{
+                        $fileTypeNameBody = $g['objMTS']->getSomeMessage("ITAWDCH-STD-324");
+                    }
+
+                    if(array_key_exists("FirstBake_AddArea_reqCsvDL", $tmpArray)===true){
+                        $htmlFirstBake_AddArea_reqCsvDL = $tmpArray['FirstBake_AddArea_reqCsvDL'];
+                    }
+                    $dlcHtmlBody .=
+<<<EOD
+                <form style="display:inline" name="reqHistoryCsvDL" action="{$g['scheme_n_authority']}/default/menu/04_all_dump_excel.php?no={$g['page_dir']}" method="POST" >
+                    <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-325")}({$fileTypeNameBody})" >
+                    <input type="hidden" name="filteroutputfiletype" value="csv">
+                    <input type="hidden" name="FORMATTER_ID" value="{$strLinkCSVFormatterId}">
+                    <input type="hidden" name="datatype" value="history">
+                    {$htmlFirstBake_AddArea_reqCsvDL}
+                </form>
+                <br>
+                <form style="display:inline" name="reqToolDL" action="{$g['scheme_n_authority']}/webdbcore/editorBaker.zip">
+                    <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-326")}" >
+                </form>
+                <br>
+                <form style="display:inline" name="reqExcelDL" action="{$g['scheme_n_authority']}/default/menu/04_all_dump_excel.php?no={$g['page_dir']}" method="POST" >
+                    <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-327")}" >
+                    <input type="hidden" name="filteroutputfiletype" value="excel">
+                    <input type="hidden" name="FORMATTER_ID" value="{$strLinkCSVFormatterId}">
+                    <input type="hidden" name="requestuserclass" value="visitor">
+                    <input type="hidden" name="datatype" value="history">
+                </form>
+EOD;
+                }
+            }
+
             $dlcHtmlBody .= 
 <<<EOD
             </div>
@@ -2472,7 +2515,7 @@ EOD;
         $query .= "FROM {$objTable->getDBJournalTableBody()} {$objTable->getShareTableAlias()} ";
         $query .= "{$objTable->getLeftJoinTableQuery()} ";
         $query .= "{$strWhereStream} {$strOrderStream}";
-
+        
         return $query;
     }
     //[5]履歴複数行SELECT用----

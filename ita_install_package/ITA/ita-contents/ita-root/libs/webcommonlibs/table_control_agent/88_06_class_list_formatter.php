@@ -124,6 +124,28 @@ class ListFormatter {
         return $strFileName;
     }
 
+    function makeLocalFileNameHistory($strFilePostFix, $intUnixTime){
+        global $g;
+        //----設定がミスしていた場合は[null]を返す
+        $strTempName = $this->objTable->getDBMainTableLabel();
+        if( $this->checkForbiddenPattern($strTempName)===false ){
+            web_log($g['objMTS']->getSomeMessage("ITAWDCH-ERR-21004"));
+            $strFileName = null;
+        }
+        else{
+            // 128文字に短縮する
+            $strFileHead = mb_substr($strTempName, 0, 128, "UTF-8");
+
+            if($intUnixTime === null){
+                $strFileName = $strFileHead.$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")."_".$strFilePostFix;
+            }
+            else{
+                $strFileName = $strFileHead."_".$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")."_".date("YmdHis",$intUnixTime).$strFilePostFix;
+            }
+        }
+        return $strFileName;
+    }
+
 }
 
 class QMFileSendAreaFormatter extends ListFormatter {
@@ -931,11 +953,6 @@ class ExcelFormatter extends ListFormatter {
         return \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($column).$row;
     }
 
-    static function cr2sDollar($column, $row){
-        $str = "$". \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($column) . "$" . $row;
-        return $str;
-    }
-
     function cashModeAdjust($intMode=0){
         global $g;
 
@@ -1069,7 +1086,7 @@ class ExcelFormatter extends ListFormatter {
                 else{
                     $intSetRow = self::DATA_START_ROW_ON_MASTER;
                 }
-                $range = self::cr2sDollar(self::DATA_START_COL+$intCountAddColOfEditSheet, self::DATA_START_ROW_ON_MASTER).":".self::cr2sDollar(self::DATA_START_COL+$intCountAddColOfEditSheet, $intSetRow);
+                $range = self::cr2s(self::DATA_START_COL+$intCountAddColOfEditSheet, self::DATA_START_ROW_ON_MASTER).":".self::cr2s(self::DATA_START_COL+$intCountAddColOfEditSheet, $intSetRow);
                 $namedRange = new \PhpOffice\PhpSpreadsheet\NamedRange("FILTER_".$objColumn->getID(), $sheet, $range);
                 $X->addNamedRange($namedRange);
             }
@@ -1090,7 +1107,7 @@ class ExcelFormatter extends ListFormatter {
             $intSetRow = self::DATA_START_ROW_ON_MASTER;
         }
         
-        $range = self::cr2sDollar(self::DATA_START_COL-1, self::DATA_START_ROW_ON_MASTER).":".self::cr2sDollar(self::DATA_START_COL-1, $intSetRow);
+        $range = self::cr2s(self::DATA_START_COL-1, self::DATA_START_ROW_ON_MASTER).":".self::cr2s(self::DATA_START_COL-1, $intSetRow);
         $namedRange = new \PhpOffice\PhpSpreadsheet\NamedRange("FILTER_".$objREBFColumn->getID(), $sheet, $range);
         $X->addNamedRange($namedRange);
 
@@ -1320,7 +1337,6 @@ class ExcelFormatter extends ListFormatter {
         if($rows>1){
             $sheet->mergeCells(self::cr2s(1,1).":".self::cr2s(1, $rows));
             $sheet->mergeCells(self::cr2s(2,1).":".self::cr2s(2, $rows));
-            $sheet->mergeCells(self::cr2s(3,1).":".self::cr2s(3, $rows));
         }
     }
 
@@ -1638,7 +1654,6 @@ class ExcelFormatter extends ListFormatter {
 
         $i_row = $intThisStartRow;
         if( $varMinorPrintTypeMode == "" ){
-            
             foreach($aryObjRow as $row){
                 $tmp_row_array = array();
                 $i_col = self::DATA_START_COL;
@@ -1666,6 +1681,7 @@ class ExcelFormatter extends ListFormatter {
                         }else{
                             $sheet->setCellValueByColumnAndRow($i_col, $i_row ,$focusValue);
                         }
+                        
                         $i_col++;
                     }
                 }
@@ -1796,6 +1812,7 @@ class ExcelFormatter extends ListFormatter {
                         $dataValidation->setShowErrorMessage(true);
                         $dataValidation->setShowDropDown(true);
                         $sheet->setDataValidation( $strPreAreaAddress , $dataValidation);
+
     
                         unset($dataValidation);
                         $strPreAreaAddress = NULL;
@@ -2091,7 +2108,7 @@ class ExcelFormatter extends ListFormatter {
         //----最終白行の次の行に、注意書きの行を追加する
         $lastRowNumber = $intThisStartRow + self::WHITE_ROWS;
         $lastColNumber = self::DATA_START_COL + $maxCol - 1;
-        
+
         //幅指定とウィンドウ枠の固定とオートフィルタ
         //オートに設定後、幅を計算、オート設定を戻す
         for($i_col = self::DATA_START_COL-1; $i_col <= $maxCol; ++$i_col){
@@ -2119,6 +2136,7 @@ class ExcelFormatter extends ListFormatter {
             $objColumn->setFormatterRef(null);
         }
     }
+
 
     /*
         Validationルール適用処理関数 Tail部(白行)のみ適用タイプ 新規登録用やテーブルレコードなしで”ColumnID"をもつEXCELファイルへバリデーションルールを適用する
@@ -2556,27 +2574,19 @@ class SingleRowTableFormatter extends TableFormatter {
                     // 登録時にアクセス権の初期表示をロール・ユーザー紐づけの
                     // デフォルトアクセス権にマーク付いているロール名にする。
                     if($this->strFormatterId == "register_table") {
+                        $RoleList = array();
                         $obj = new RoleBasedAccessControl($g['objDBCA']);
-                        if($outputRowData[$AccessAuthColumnName] == ""){
-                            $RoleList = array();
-                            // 廃止以外のロールリスト
-                            $DefaultAccessRoleString = $obj->getDefaultAccessRoleString($g['login_id'],'NAME',true); // 廃止を含む
-                            
-                            if($DefaultAccessRoleString === false) {
-                                $message = sprintf("[%s:%s]Failed get Role information.",basename(__FILE__),__LINE__);
-                                web_log($message);
-                                throw new Exception($message);
-                            }
-                            // 登録画面に表示するアクセス権をロール名称の文字列に設定
-                            $outputRowData[$AccessAuthColumnName] = $DefaultAccessRoleString;
-                        } else {
-                            $RoleIDString   = $outputRowData[$AccessAuthColumnName];
-                            $RoleNameString = $obj->getRoleIDStringToRoleNameString($g['login_id'],$RoleIDString,true);  // 廃止を含む
-                            // 登録画面に表示するアクセス権をロール名称の文字列に設定
-                            $outputRowData[$AccessAuthColumnName] = $RoleNameString;
-                        }
+                        // 廃止以外のロールリスト
+                        $DefaultAccessRoleString = $obj->getDefaultAccessRoleString($g['login_id'],'NAME',true); // 廃止を含む
+
                         unset($obj);
-                        
+                        if($DefaultAccessRoleString === false) {
+                            $message = sprintf("[%s:%s]Failed get Role information.",basename(__FILE__),__LINE__);
+                            web_log($message);
+                            throw new Exception($message);
+                        }
+                        // 登録画面に表示するアクセス権をロール名称の文字列に設定
+                        $outputRowData[$AccessAuthColumnName] = $DefaultAccessRoleString;
                     } elseif($this->strFormatterId == "update_table") {
                         if(array_key_exists($AccessAuthColumnName,$outputRowData) === false) {
                             $message = sprintf("[%s:%s] %s Column not found.",basename(__FILE__),__LINE__,$AccessAuthColumnName);
@@ -2602,21 +2612,7 @@ class SingleRowTableFormatter extends TableFormatter {
                 }
             }
             // RBAC対応 ----
-            $objColumnId = $objColumn->getID();
-            if( get_class($this) == "RegisterTableFormatter" && get_class($objColumn) == "FileUploadColumn" ) {
-
-                if( $objColumn->getFileEncryptFunctionName() == false ) {
-                    $tmpStr .= $objColumn->getOutputBodyDuplicate($this->strFormatterId, $outputRowData, false);
-                } else {
-                    $tmpStr .= $objColumn->getOutputBodyDuplicate($this->strFormatterId, $outputRowData, true);
-                }
-                
-            } elseif( get_class($this) == "RegisterTableFormatter" && 
-                ( get_class($objColumn) == "SensitiveMultiTextColumn" || get_class($objColumn) == "SensitiveSingleTextColumn" )) {
-                $tmpStr .= $objColumn->getOutputBodyDuplicate($this->strFormatterId, $outputRowData, $outputRowData['SENSITIVE_FLAG']);
-            } else {
-                $tmpStr .= $objColumn->getOutputBody($this->strFormatterId, $outputRowData);
-            }
+            $tmpStr .= $objColumn->getOutputBody($this->strFormatterId, $outputRowData);
         }
 
         if( $tmpStr == "" ){
@@ -2796,100 +2792,6 @@ EOD;
             {$strEdit01ButtonBody}
             {$strEdit02ButtonBody}
 EOD;
-            $strOutputStr .= "<div class=\"editing_flag\" style=\"display:none;\"></div>";
-        }
-        return $strOutputStr;
-    }
-
-    function printWebUIEditFormDuplicate($arySetting,$objTable,$aryVariant,$strFormatterId,$strNumberForRI,$editTgtRow){
-        global $g;
-        $strOutputStr ='';
-        //----共通
-        $strShowTable01TagId = "";
-        $strShowTable01WrapDivClass = "";
-        $strShowTable01FunctionPreFix = "";
-        $strFiterTable01TagId = "";
-        $strFiterTable01FunctionPreFix = "";
-        //----出力されるタグの属性値
-        if(array_key_exists("printTagId",$arySetting)===true){
-            $strShowTable01TagId = $arySetting['printTagId'][0];
-            $strShowTable01WrapDivClass = $arySetting['printTagId'][1];
-
-            $strFiterTable01TagId = $arySetting['printTagId'][2];
-        }else{
-            $strShowTable01TagId = "Mix2_1";
-            $strShowTable01WrapDivClass = "fakeContainer_Register2";
-
-            $strFiterTable01TagId = "Filter1Tbl";
-        }
-        if($objTable->getJsEventNamePrefix()===true){
-            $strShowTable01FunctionPreFix = $strShowTable01TagId."_";
-            $strFiterTable01FunctionPreFix = $strFiterTable01TagId."_";
-        }
-        //出力されるTableタグの属性値----
-        $strModeTypeName = $this->getModeTypeName($arySetting);
-        //共通----
-        if(array_key_exists("register_edit_scene", $arySetting)===true){
-            $strOutputStr  = $arySetting['register_edit_scene'];
-        }else{
-
-            $objTable->addData($editTgtRow);
-
-            $strOutputStr = 
-<<< EOD
-            <div class="{$strShowTable01WrapDivClass}">
-EOD;
-            //----登録用テーブルhtmlの出力
-            $strOutputStr .= $objTable->getPrintFormat($strFormatterId, $strShowTable01TagId, $strNumberForRI);
-            //登録用テーブルhtmlの出力----
-
-            $strEdit01ButtonShow     = true;
-            $strEdit01ButtonFace     = $g['objMTS']->getSomeMessage("ITAWDCH-STD-354");
-            $strEdit01ButtonJsFxPrfx = $strShowTable01FunctionPreFix;
-            $strEdit01ButtonJsFxName = "pre_register_async";
-            $strEdit01ButtonJsFxVars = "0";
-            $strEdit01ButtonJsFxAddVars = "";
-
-            $strEdit02ButtonShow     = true;
-            $strEdit02ButtonFace     = $strModeTypeName;
-            $strEdit02ButtonJsFxPrfx = $strShowTable01FunctionPreFix;
-            $strEdit02ButtonJsFxName = "register_async";
-            $strEdit02ButtonJsFxVars = "2";
-            $strEdit02ButtonJsFxAddVars = "";
-
-            if(array_key_exists("register_edit_setting", $arySetting)===true){
-                $tmpArray1Setting = $arySetting["register_edit_setting"];
-                if( array_key_exists("Edit01Button",$tmpArray1Setting)===true){
-                    $tmpArray2Setting = $tmpArray1Setting["Edit01Button"];
-                    if(isset($tmpArray2Setting['Show'])===true) $strEdit01ButtonShow = $tmpArray2Setting['Show'];
-                    if(isset($tmpArray2Setting['Face'])===true) $strEdit01ButtonFace = $tmpArray2Setting['Face'];
-                    if(isset($tmpArray2Setting['JsFunctionPrefix'])===true) $strEdit01ButtonJsFxPrfx = $tmpArray2Setting['JsFunctionPrefix'];
-                    if(isset($tmpArray2Setting['JsFunctionName'])===true) $strEdit01ButtonJsFxName = $tmpArray2Setting['JsFunctionName'];
-                    if(isset($tmpArray2Setting['JsFunctionAddVars'])===true) $strEdit01ButtonJsFxAddVars = $tmpArray2Setting['JsFunctionAddVars'];
-                    unset($tmpArray2Setting);
-                }
-                if( array_key_exists("Edit02Button",$tmpArray1Setting)===true){
-                    $tmpArray2Setting = $tmpArray1Setting["Edit02Button"];
-                    if(isset($tmpArray2Setting['Show'])===true) $strEdit02ButtonShow = $tmpArray2Setting['Show'];
-                    if(isset($tmpArray2Setting['Face'])===true) $strEdit02ButtonShow = $tmpArray2Setting['Face'];
-                    if(isset($tmpArray2Setting['JsFunctionPrefix'])===true) $strEdit02ButtonShow = $tmpArray2Setting['JsFunctionPrefix'];
-                    if(isset($tmpArray2Setting['JsFunctionName'])===true) $strEdit02ButtonJsFxName = $tmpArray2Setting['JsFunctionName'];
-                    if(isset($tmpArray2Setting['JsFunctionAddVars'])===true) $strEdit02ButtonJsFxAddVars = $tmpArray2Setting['JsFunctionAddVars'];
-                    unset($tmpArray2Setting);
-                }
-                unset($tmpArray1Setting);
-            }
-            $strEdit01ButtonBody=($strEdit01ButtonShow===true)?"<input class=\"linkbutton\" type=\"button\" value=\"{$strEdit01ButtonFace}\" onClick=location.href=\"javascript:{$strEdit01ButtonJsFxPrfx}{$strEdit01ButtonJsFxName}({$strEdit01ButtonJsFxVars}{$strEdit01ButtonJsFxAddVars});\" >":"";
-            $strEdit02ButtonBody=($strEdit02ButtonShow===true)?"<input class=\"disableAfterPush\" type=\"button\" value=\"{$strEdit02ButtonFace}\" onClick=location.href=\"javascript:{$strEdit02ButtonJsFxPrfx}{$strEdit02ButtonJsFxName}({$strEdit02ButtonJsFxVars}{$strEdit02ButtonJsFxAddVars});\" >":"";
-
-            $strOutputStr .= 
-<<< EOD
-            </div>
-            &nbsp&nbsp&nbsp&nbsp※<span class="input_required">*</span>{$g['objMTS']->getSomeMessage("ITAWDCH-STD-353")}<br><br>
-            {$strEdit01ButtonBody}
-            {$strEdit02ButtonBody}
-EOD;
-
             $strOutputStr .= "<div class=\"editing_flag\" style=\"display:none;\"></div>";
         }
         return $strOutputStr;

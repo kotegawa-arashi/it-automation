@@ -392,7 +392,7 @@
                     $JnlRegTimeColumn->getOutputType("excel")->setVisible(true);
                     $JnlRegTimeColumn->getOutputType("csv")->setVisible(true);
                     $JnlRegTimeColumn->setDbColumn(true);
-
+                    
                     $sql = generateJournalSelectSQL(2,$objTable, $boolBinaryDistinctOnDTiS);
                     // generateJournalSelectSQL呼び出し[Where句に各カラムの名前が記述され、値の部分が置換される前の履歴取得SQLが作成される]----
                 }
@@ -466,7 +466,6 @@
                     $intErrorPlaceMark = 1600;
                     throw new Exception( sprintf($strErrorPlaceFmt,$intErrorPlaceMark).'-([FUNCTION]' . $strFxName . ',[FILE]' . __FILE__ . ',[LINE]' . __LINE__ . ')' );
                 }
-
                 $strTmpFilename = makeUniqueTempFilename($g['root_dir_path'] . "/temp", "temp_csv_dl" . date("YmdHis", $intUnixTime) . "_" . mt_rand());
                 
                 $strCsvHeaderStream = "";
@@ -656,10 +655,20 @@
 
                     // ----XLSXファイル名の設定
                     if( $strPrintTypeMode != "forDeveloper" ){
-                        $strDLFilename = $objExcelFormatter->makeLocalFileName(".xlsx",$intUnixTime);
+                        if($strOutputDataType === "latest"){
+                            $strDLFilename = $objExcelFormatter->makeLocalFileName(".xlsx",$intUnixTime);
+                        }
+                        else if($strOutputDataType === "history"){
+                            $strDLFilename = $objExcelFormatter->makeLocalFileNameHistory(".xlsx",$intUnixTime);
+                        }
                     }
                     else{
-                        $strDLFilename = $objExcelFormatter->makeLocalFileName(".xlsx",$intUnixTime);
+                        if($strOutputDataType === "latest"){
+                            $strDLFilename = $objExcelFormatter->makeLocalFileName(".xlsx",$intUnixTime);
+                        }
+                        else if($strOutputDataType === "history"){
+                            $strDLFilename = $objExcelFormatter->makeLocalFileNameHistory(".xlsx",$intUnixTime);
+                        }
                     }
                     if( $strDLFilename === null ){
                         $intErrorType = 501;
@@ -725,6 +734,7 @@
                                                                            $filterData,
                                                                            $aryVariant,
                                                                            $arySetting);
+
 
                         if( $tmpAryRet[1] !== null ){
                             $intErrorType = $tmpAryRet[1];
