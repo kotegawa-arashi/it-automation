@@ -379,6 +379,7 @@
                     // generateSelectSql2呼び出し[Where句に各カラムの名前が記述され、値の部分が置換される前のSQLが作成される]----
                 }
                 else if($strOutputDataType === "history"){
+                    $sqllatest = generateSelectSql2(2, $objTable, $boolBinaryDistinctOnDTiS);
                     // ----generateJournalSelectSQL呼び出し[Where句に各カラムの名前が記述され、値の部分が置換される前の履歴取得SQLが作成される]
 
                     // 履歴通番を表示
@@ -521,14 +522,26 @@
                     throw new Exception( sprintf($strErrorPlaceFmt,$intErrorPlaceMark).'-([FUNCTION]' . $strFxName . ',[FILE]' . __FILE__ . ',[LINE]' . __LINE__ . ')' );
                 }
 
-                $tmpAryRet = $objCsvFormatter->writeToFile($sql,
-                                                           $arrayFileterBody,
-                                                           $objTable,
-                                                           $objFunction03ForOverride,
-                                                           $strFormatterId,
-                                                           $filterData,
-                                                           $aryVariant,
-                                                           $arySetting);
+                if($strOutputDataType === "latest"){
+                    $tmpAryRet = $objCsvFormatter->writeToFile($sql,
+                                                               $arrayFileterBody,
+                                                               $objTable,
+                                                               $objFunction03ForOverride,
+                                                               $strFormatterId,
+                                                               $filterData,
+                                                               $aryVariant,
+                                                               $arySetting);
+                } else if($strOutputDataType === "history"){
+                    $tmpAryRet = $objCsvFormatter->writeToFileHistory($sql,
+                                                               $arrayFileterBody,
+                                                               $objTable,
+                                                               $objFunction03ForOverride,
+                                                               $strFormatterId,
+                                                               $filterData,
+                                                               $aryVariant,
+                                                               $arySetting,
+                                                               $sqllatest);
+                }
 
                 if( $tmpAryRet[1] !== null ){
                     $intErrorType = $tmpAryRet[1];
@@ -725,7 +738,8 @@
                             unset($tmpObjFunction03ForOverride);
                         }
 
-                        $tmpAryRet = $objExcelFormatter->selectResultFetch($sql,
+                        if($strOutputDataType === "latest"){
+                            $tmpAryRet = $objExcelFormatter->selectResultFetch($sql,
                                                                            $arrayFileterBody,
                                                                            $objTable,
                                                                            $intXlsLimit,
@@ -734,6 +748,19 @@
                                                                            $filterData,
                                                                            $aryVariant,
                                                                            $arySetting);
+                        } else if($strOutputDataType === "history"){
+                            $tmpAryRet = $objExcelFormatter->selectResultFetchHistory($sql,
+                                                                           $arrayFileterBody,
+                                                                           $objTable,
+                                                                           $intXlsLimit,
+                                                                           $objFunction03ForOverride,
+                                                                           $strFormatterId,
+                                                                           $filterData,
+                                                                           $aryVariant,
+                                                                           $arySetting,
+                                                                           $sqllatest);
+                        }
+                        
 
 
                         if( $tmpAryRet[1] !== null ){

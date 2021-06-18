@@ -680,6 +680,125 @@ class CSVFormatter extends ListFormatter {
         return $retArray;
     }
 
+
+
+function writeToFileHistory($sql, $arrayFileterBody, $objTable, $objFunction01ForOverride, $strFormatterId, $filterData, $aryVariant, &$arySetting, $sqllatest){
+    global $g;
+    $intControlDebugLevel01=250;
+
+    $intRowLength = null;
+    $intErrorType = null;
+    $aryErrMsgBody = array();
+    $strErrMsg = "";
+    $datalatest = array();
+
+    $strFxName = __CLASS__."::".__FUNCTION__;
+    dev_log($g['objMTS']->getSomeMessage("ITAWDCH-STD-3",array(__FILE__,$strFxName)),$intControlDebugLevel01);
+
+    try{
+        if( is_callable($objFunction01ForOverride) !== true ){
+            //----標準writeToFile句
+
+            $this->setGeneValue("csvFieldRowAdd",false);
+            $this->setGeneValue("csvRecordShowAdd",true);
+
+            $intFetchCount = 0;
+
+            $retArray = singleSQLExecuteAgent($sqllatest, $arrayFileterBody, $strFxName);
+            if( $retArray[0] !== true ){
+                $intErrorType = 501;
+                throw new Exception( '00000100-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+            }
+
+            $objQuery =& $retArray[1];
+            $chkobj = null;
+            while ( $row = $objQuery->resultFetch() ){
+                // ---- 判定対象レコードのACCESS_AUTHカラムでアクセス権を判定
+                list($ret,$permission) = chkTargetRecodePermission($objTable->getAccessAuth(),$chkobj,$row);
+                if($ret === false) {
+                    $intErrorType = 501;
+                    throw new Exception( '00000101-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                }
+                if($permission === false) {
+                    continue;
+                }
+                $datalatest[] = $row[$objTable->getRIColumnID()];
+            }
+
+
+            $retArray = singleSQLExecuteAgent($sql, $arrayFileterBody, $strFxName);
+            if( $retArray[0] !== true ){
+                $intErrorType = 501;
+                throw new Exception( '00000100-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+            }
+
+            // ---- RBAC対応
+            $objQuery =& $retArray[1];
+            $chkobj = null;
+            while ( $row = $objQuery->resultFetch() ){
+                // ---- 判定対象レコードのACCESS_AUTHカラムでアクセス権を判定
+                list($ret,$permission) = chkTargetRecodePermission($objTable->getAccessAuth(),$chkobj,$row);
+                if($ret === false) {
+                    $intErrorType = 501;
+                    throw new Exception( '00000101-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                }
+                if($permission === false || !in_array($row[$objTable->getRIColumnID()], $datalatest)) {
+                    continue;
+                }
+                $intFetchCount += 1;
+                $objTable->addData($row, false);
+                if( ($intFetchCount % 10000) === 0){
+                    //----10000行ずつファイルへ書き込み
+                    $boolRet = $this->fileStreamAdd($objTable->getPrintFormat($strFormatterId));
+                    if( $boolRet !== true ){
+                        $intErrorType = 501;
+                        throw new Exception( '00000200-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                    }
+                    //----メモリを確保するためにデータを解放
+                    $objTable->setData(array());
+                    //メモリを確保するためにデータを解放---- 
+                    //10000行ずつファイルへ書き込み----
+                }
+            }
+            // RBAC対応 ----
+
+            if( ($intFetchCount % 10000) !== 0 ){
+                $boolRet = $this->fileStreamAdd($objTable->getPrintFormat($strFormatterId));
+                if( $boolRet !== true ){
+                    $intErrorType = 501;
+                    throw new Exception( '00000300-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                }
+                //----メモリを確保するためにデータを解放
+                $objTable->setData(array());
+                //メモリを確保するためにデータを解放---- 
+            }
+
+            unset($objQuery);
+            unset($retArray);
+
+            //標準writeToFile句----
+        }
+        else{
+            $tmpAryRet = $objFunction01ForOverride($objTable, $strFormatterId, $filterData, $aryVariant, $arySetting);
+            if( $tmpAryRet[1] !== null ){
+                $intErrorType = $tmpAryRet[1];
+                $aryErrMsgBody = $tmpAryRet[2];
+                throw new Exception( '00000200-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+            }
+            $intRowLength = $tmpAryRet[0];
+            unset($tmpAryRet);
+        }
+    }
+    catch(Exception $e){
+        $tmpErrMsgBody = $e->getMessage();
+        web_log($g['objMTS']->getSomeMessage("ITAWDCH-ERR-5001",$tmpErrMsgBody));
+    }
+
+    $retArray = array($intRowLength,$intErrorType,$aryErrMsgBody,$strErrMsg);
+    dev_log($g['objMTS']->getSomeMessage("ITAWDCH-STD-4",array(__FILE__,$strFxName)),$intControlDebugLevel01);
+    return $retArray;
+}
+
 }
 
 class JSONFormatter extends ListFormatter {
@@ -2290,6 +2409,127 @@ class ExcelFormatter extends ListFormatter {
                             throw new Exception( '00000101-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
                         }
                         if($permission === true) {
+                            if($objTable->getAccessAuth() === true) {
+                                $AccessAuthColumnName = $objTable->getAccessAuthColumnName();
+                                if(array_key_exists($AccessAuthColumnName,$row)) {
+                                    $RoleIDString   = $row[$AccessAuthColumnName];
+                                    $RoleNameString = "";
+                                    if(strlen($RoleIDString) != 0) {
+                                        // ロールID文字列のアクセス権をロール名称の文字列に変換
+                                        // 廃止されているロールはID変換失敗で表示
+                                        $obj = new RoleBasedAccessControl($g['objDBCA']);
+                                        $RoleNameString = $obj->getRoleIDStringToRoleNameString($g['login_id'],$RoleIDString,true);  // 廃止を含む
+                                        unset($obj);
+                                    }
+                                    if($RoleNameString === false) {
+                                        $message = sprintf("[%s:%s]getRoleIDStringToRoleNameString Failed.",basename(__FILE__),__LINE__);
+                                        web_log($message);
+                                        $intErrorType = 500;
+                                        throw new Exception( '00000700-([FUNCTION]' . $strFxName . ',[FILE]' . __FILE__ . ',[LINE]' . __LINE__ . ')' );
+                                    }
+                                    // 登録するアクセス権をロール名称の文字列に設定
+                                    $row[$AccessAuthColumnName] = $RoleNameString;
+                                } else {
+                                }
+                            }
+                            $intFetchCount += 1;
+                            if( $intXlsLimit === null || $intFetchCount <= $intXlsLimit ){
+                                $objTable->addData($row, false);
+                                //----注意ポイント（エクセルフォーマッタへデータ転写）
+                                $this->editWorkSheetRecordAdd();
+                                //注意ポイント（エクセルフォーマッタへデータ転写）----
+                                $objTable->setData(array());
+                            }
+                        } else {
+                        }
+                    }
+                    // RBAC対応 ----
+
+                    // ----取得したレコード数を取得
+                    $intRowLength = $intFetchCount;
+                    // 取得したレコード数を取得----
+                    unset($objQuery);
+                }
+                else{
+                    $intErrorType = 501;
+                    throw new Exception( '00000100-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                }
+                unset($retArray);
+                //標準selectResultFetch句----
+            }
+            else{
+                $tmpAryRet = $objFunction01ForOverride($arrayFileterBody, $objTable, $intXlsLimit, $strFormatterId, $filterData, $aryVariant, $arySetting);
+                if( $tmpAryRet[1] !== null ){
+                    $intErrorType = $tmpAryRet[1];
+                    $aryErrMsgBody = $tmpAryRet[2];
+                    throw new Exception( '00000200-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                }
+                $intRowLength = $tmpAryRet[0];
+                unset($tmpAryRet);
+            }
+        }
+        catch(Exception $e){
+            $tmpErrMsgBody = $e->getMessage();
+            web_log($g['objMTS']->getSomeMessage("ITAWDCH-ERR-5001",$tmpErrMsgBody));
+        }
+
+        $retArray = array($intRowLength,$intErrorType,$aryErrMsgBody,$strErrMsg);
+        dev_log($g['objMTS']->getSomeMessage("ITAWDCH-STD-4",array(__FILE__,$strFxName)),$intControlDebugLevel01);
+        return $retArray;
+    }
+
+    function selectResultFetchHistory($sql, $arrayFileterBody, $objTable, $intXlsLimit, $objFunction01ForOverride, $strFormatterId, $filterData, $aryVariant, &$arySetting,$sqllatest){
+        global $g;
+        $intControlDebugLevel01=250;
+
+        $intRowLength = null;
+        $intErrorType = null;
+        $aryErrMsgBody = array();
+        $strErrMsg = "";
+        $datalatest = array();
+
+        $strFxName = __CLASS__."::".__FUNCTION__;
+        dev_log($g['objMTS']->getSomeMessage("ITAWDCH-STD-3",array(__FILE__,$strFxName)),$intControlDebugLevel01);
+
+        try{
+            if( is_callable($objFunction01ForOverride) !== true ){
+                $intFetchCount = 0;
+                
+                $retArray = singleSQLExecuteAgent($sqllatest, $arrayFileterBody, $strFxName);
+                if( $retArray[0] === true ){
+                    $objQuery =& $retArray[1];
+                    // ---- RBAC対応
+                    $chkobj = null;
+                    while ( $row = $objQuery->resultFetch() ){
+                        // ---- 判定対象レコードのACCESS_AUTHカラムでアクセス権を判定
+                        list($ret,$permission) = chkTargetRecodePermission($objTable->getAccessAuth(),$chkobj,$row);
+                        if($ret === false) {
+                            $intErrorType = 501;
+                            throw new Exception( '00000101-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                        }
+                        if($permission === true) {
+                            $datalatest[] = $row[$objTable->getRIColumnID()];
+                        }
+                    }
+                }else{
+                    $intErrorType = 501;
+                    throw new Exception( '00000100-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                }
+
+                //----標準selectResultFetch句
+                $retArray = singleSQLExecuteAgent($sql, $arrayFileterBody, $strFxName);
+                if( $retArray[0] === true ){
+                    $objQuery =& $retArray[1];
+                    // ---- RBAC対応
+                    $chkobj = null;
+                    while ( $row = $objQuery->resultFetch() ){
+                        // ---- 判定対象レコードのACCESS_AUTHカラムでアクセス権を判定
+                        list($ret,$permission) = chkTargetRecodePermission($objTable->getAccessAuth(),$chkobj,$row);
+                        if($ret === false) {
+                            $intErrorType = 501;
+                            throw new Exception( '00000101-([CLASS]' . __CLASS__ . ',[FUNCTION]' . __FUNCTION__ . ')' );
+                        }
+                        if($permission === true && in_array($row[$objTable->getRIColumnID()], $datalatest)) {
                             if($objTable->getAccessAuth() === true) {
                                 $AccessAuthColumnName = $objTable->getAccessAuthColumnName();
                                 if(array_key_exists($AccessAuthColumnName,$row)) {
