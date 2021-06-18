@@ -858,6 +858,8 @@ EOD;
 <<<EOD
         <br>
         <br>
+        <hr>
+        <p>{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-325")}</p>
         <br>
         <form style="display:inline" name="reqHistoryExcelDL_print_table" action="{$g['scheme_n_authority']}/default/menu/04_all_dump_excel.php?no={$g['page_dir']}" method="POST" >
             <input type="submit" value="{$g['objMTS']->getSomeMessage("ITAWDCH-STD-30071")}{$g['objMTS']->getSomeMessage("ITAWDCH-STD-322")}" {$btnHistoryXlsDlFlag}>
@@ -2508,7 +2510,7 @@ EOD;
         }
 
         // ----ORDER BY句を付加
-        $strOrderStream = " ORDER BY {$objTable->getRequiredJnlSeqNoColumnID()} DESC";
+        $strOrderStream = " ORDER BY {$objTable->getDBSortText()}, {$objTable->getRequiredJnlSeqNoColumnID()} DESC";
         // ORDER BY句を付加----
 
         $query  = "SELECT {$strColStream} ";
