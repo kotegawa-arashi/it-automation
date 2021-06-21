@@ -488,11 +488,21 @@
                 }
                 $strCSVOutputFileType = $objCsvFormatter->getGeneValue("outputFileType",$refRetKeyExists);
                 if( $strCSVOutputFileType == "SafeCSV" ){
-                    $strDLFilename = $objCsvFormatter->makeLocalFileName(".scsv",$intUnixTime);
+                    if($strOutputDataType === "latest"){
+                        $strDLFilename = $objCsvFormatter->makeLocalFileName(".scsv",$intUnixTime);
+                    }
+                    else if($strOutputDataType === "history"){
+                        $strDLFilename = $objCsvFormatter->makeLocalFileNameHistory(".scsv",$intUnixTime);
+                    }
                 }
                 else{
                     $strCSVOutputFileType = "NormalCSV";
-                    $strDLFilename = $objCsvFormatter->makeLocalFileName(".csv",$intUnixTime);
+                    if($strOutputDataType === "latest"){
+                        $strDLFilename = $objCsvFormatter->makeLocalFileName(".csv",$intUnixTime);
+                    }
+                    else if($strOutputDataType === "history"){
+                        $strDLFilename = $objCsvFormatter->makeLocalFileNameHistory(".csv",$intUnixTime);
+                    }
                 }
                 if( $strDLFilename === null ){
                     $intErrorType = 501;
